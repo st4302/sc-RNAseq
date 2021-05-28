@@ -1,0 +1,1158 @@
+---
+title: "Project1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("~/Applied Sequencing/Assignment/Final Project/")
+wd = getwd()
+knitr::opts_chunk$set(root.dir = wd)
+```
+
+
+```{r}
+#Load libraries
+
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+library(tidyverse)
+library(Matrix)
+library(RCurl)
+library(scales)
+library(cowplot)
+library(SingleCellExperiment)
+library(AnnotationHub)
+library(ensembldb)
+library(DESeq2)
+library(RColorBrewer)
+library(pheatmap)
+library(ggrepel)
+library(cowplot)
+library(clusterProfiler)
+library(DEGreport)
+library(org.Rn.eg.db)
+library(DOSE)
+library(pathview)
+library(tximport)
+library(AnnotationHub)
+library(ensembldb)
+library(enrichR)
+
+# Load the datasets
+
+DMSOexp1 <- Read10X(data.dir = "~/Applied Sequencing/Assignment/Final Project/DMSoexp1/")
+# Initialize the Seurat object with the raw (non-normalized data).
+DMSOexp1 <- CreateSeuratObject(counts = DMSOexp1, project = "DMSOexp1", min.cells = 3, min.features = 200)
+DMSOexp1
+
+DMSOexp4 <- Read10X(data.dir = "~/Applied Sequencing/Assignment/Final Project/DMSOexp4/")
+# Initialize the Seurat object with the raw (non-normalized data).
+DMSOexp4 <- CreateSeuratObject(counts = DMSOexp4, project = "DMSOexp4", min.cells = 3, min.features = 200)
+DMSOexp4
+
+Mirin <- Read10X(data.dir = "~/Applied Sequencing/Assignment/Final Project/mirin/")
+# Initialize the Seurat object with the raw (non-normalized data).
+Mirin <- CreateSeuratObject(counts = Mirin, project = "Mirin", min.cells = 3, min.features = 200)
+Mirin
+
+Ly <- Read10X(data.dir = "~/Applied Sequencing/Assignment/Final Project/ly/")
+# Initialize the Seurat object with the raw (non-normalized data).
+Ly <- CreateSeuratObject(counts = Ly, project = "Ly", min.cells = 3, min.features = 200)
+Ly
+
+
+#Add Condition column
+DMSOexp1$Condition <- "DMSOexp1"
+DMSOexp4$Condition <- "DMSOexp4"
+Mirin$Condition <- "Mirin"
+Ly$Condition <- "Ly"
+
+# View summary of total expression by single cell
+summary(colSums(DMSOexp1)) 
+#Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#500    1094    7756   13311   16582  204247 
+summary(colSums(DMSOexp4)) 
+#Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#500     678    1175   11192   16350  138447 
+summary(colSums(Mirin))
+#Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#501    1130    3405   13131   24566  123316 
+summary(colSums(Ly)) 
+#Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#500    1620   15514   19959   36766  161142 
+
+```
+
+```{r}
+#Standard Pre-processing workflow
+#https://satijalab.org/seurat/articles/pbmc3k_tutorial.html
+
+DMSOexp1[["percent.mt"]] <- PercentageFeatureSet(DMSOexp1, pattern = "^Mt-")
+DMSOexp4[["percent.mt"]] <- PercentageFeatureSet(DMSOexp4, pattern = "^Mt-")
+Mirin[["percent.mt"]] <- PercentageFeatureSet(Mirin, pattern = "^Mt-")
+Ly[["percent.mt"]] <- PercentageFeatureSet(Ly, pattern = "^Mt-")
+
+# Visualize QC metrics as a violin plot
+plot1 <- VlnPlot(DMSOexp1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot2 <- VlnPlot(DMSOexp4, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot3 <- VlnPlot(Mirin, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot4 <- VlnPlot(Ly, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+CombinePlots(plots = list(plot1, plot2, plot3, plot4), nrow = 2) #1300x800 #Figure 1
+
+
+# FeatureScatter is typically used to visualize feature-feature relationships, but can be used # for anything calculated by the object, i.e. columns in object metadata, PC scores etc.
+plot5 <- FeatureScatter(DMSOexp1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", col = "darkblue") + xlim(c(0, 150000)) + ylim(c(0, 8000))
+plot6 <- FeatureScatter(DMSOexp1, feature1 = "nCount_RNA", feature2 = "percent.mt", col = "darkblue") + xlim(c(0, 100000)) + ylim(c(0, 150))
+plot7 <- plot5 + plot6
+
+
+plot8 <- FeatureScatter(DMSOexp4, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", col = "green") + xlim(c(0, 150000)) + ylim(c(0, 8000))
+plot9 <- FeatureScatter(DMSOexp4, feature1 = "nCount_RNA", feature2 = "percent.mt", col = "green") + xlim(c(0, 100000)) + ylim(c(0, 150))
+plot10 <- plot8 + plot9
+
+plot11 <- FeatureScatter(Mirin, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", col = "purple") + xlim(c(0, 150000)) + ylim(c(0, 8000))
+plot12 <- FeatureScatter(Mirin, feature1 = "nCount_RNA", feature2 = "percent.mt", col = "purple") + xlim(c(0, 100000)) + ylim(c(0, 150))
+plot13 <- plot11 + plot12 
+
+
+plot14 <- FeatureScatter(Ly, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", col = "yellow") + xlim(c(0, 150000)) + ylim(c(0, 8000))
+plot15 <- FeatureScatter(Ly, feature1 = "nCount_RNA", feature2 = "percent.mt", col = "yellow") + xlim(c(0, 100000)) + ylim(c(0, 150))
+plot16 <- plot14 + plot15
+CombinePlots(plots = list(plot7, plot10, plot13, plot16), ncol = 2) #1800x600
+
+#Pearson correlation between the two features is displayed above the plot.
+### All have a fairly high positive correlation for nFeauture RNA (greater than 0.89) but low for percent.mt
+
+
+
+#Subset Data
+DMSOexp1 <- subset(x = DMSOexp1, subset = nFeature_RNA > 200 & nFeature_RNA < 6500 & percent.mt < 50)
+DMSOexp4 <- subset(x = DMSOexp4, subset = nFeature_RNA > 200 & nFeature_RNA < 6500 & percent.mt < 50)
+Mirin <- subset(x = Mirin, subset = nFeature_RNA > 200 & nFeature_RNA < 6500 & percent.mt < 50)
+Ly <- subset(x = Ly, subset = nFeature_RNA > 200 & nFeature_RNA < 6500 & percent.mt < 50)
+
+#Normalize Data using Default parameters
+DMSOexp1 <- NormalizeData(DMSOexp1, normalization.method = "LogNormalize", scale.factor = 10000)
+#DMSOexp1norm <- NormalizeData(DMSOexp1) (same command as above)
+
+DMSOexp4 <- NormalizeData(DMSOexp4, normalization.method = "LogNormalize", scale.factor = 10000) #pbmc <- NormalizeData(pbmc) same thing
+
+Mirin <- NormalizeData(Mirin, normalization.method = "LogNormalize", scale.factor = 10000) #pbmc <- NormalizeData(pbmc) same thing
+
+Ly <- NormalizeData(Ly, normalization.method = "LogNormalize", scale.factor = 10000) #pbmc <- NormalizeData(pbmc) same thing
+
+
+# Calculate a subset of features that exhibit high cell-to-cell variation in the dataset using the FindVariableFeatures function
+
+DMSOexp1 <- FindVariableFeatures(DMSOexp1, selection.method = "vst", nfeatures = 2000)
+DMSOexp4 <- FindVariableFeatures(DMSOexp4, selection.method = "vst", nfeatures = 2000)
+Mirin <- FindVariableFeatures(Mirin, selection.method = "vst", nfeatures = 2000)
+Ly <- FindVariableFeatures(Ly, selection.method = "vst", nfeatures = 2000)
+
+```
+
+```{r}
+
+# Integrate the four datasets
+# select features that are repeatedly variable across datasets for integration
+features <- SelectIntegrationFeatures(object.list = list(DMSOexp1,  DMSOexp4, Mirin, Ly))
+
+ 
+# Identify anchors to integrate the 4 datasets 
+stage_anchors <- FindIntegrationAnchors(object.list = list(DMSOexp1,  DMSOexp4, Mirin, Ly), anchor.features = features)
+Data_combined <- IntegrateData(anchorset = stage_anchors)
+
+# specify that we will perform downstream analysis on the corrected data note that the origin
+# Label assay
+DefaultAssay(object = Data_combined) <- "integrated"
+
+Data_combined <- ScaleData(Data_combined, verbose = FALSE)
+Data_combined <- RunPCA(Data_combined, npcs = 30, verbose = FALSE)
+Data_combined <- RunUMAP(Data_combined, reduction = "pca", dims = 1:30)
+
+# NOTE: This process can take a long time for big datasets, comment out for expediency. More
+# approximate techniques such as those implemented in ElbowPlot() can be used to reduce
+# computation time
+Data_combined <- JackStraw(Data_combined, num.replicate = 100)
+Data_combined <- ScoreJackStraw(Data_combined, dims = 1:20)
+JackStrawPlot(Data_combined, dims = 1:20)
+
+# Elbow Plot
+ElbowPlot(object = Data_combined)
+
+set.seed(1234)
+
+# t-SNE and Clustering
+Data_combined <- RunTSNE(object = Data_combined, reduction = "pca", dims = 1:10) 
+DimPlot(Data_combined, reduction = "tsne")
+Data_combined <- RunUMAP(object = Data_combined, reduction = "pca", dims = 1:10) 
+DimPlot(Data_combined, reduction = "umap")
+Data_combined <- FindNeighbors(object = Data_combined, reduction = "pca", dims = 1:10) 
+Data_combined <- FindClusters(Data_combined, resolution = 0.2) # was 0.5 (decreasing this decreases number of clusters) #17
+head(x = Idents(object = Data_combined), 10)
+
+
+pca_1 <- DimPlot(object = Data_combined, reduction = "pca", group.by = "Condition")
+pca_2 <- DimPlot(object = Data_combined, reduction = "pca", label = TRUE)
+pca_3 <- DimPlot(object = Data_combined, reduction = "pca", split.by = "Condition")
+pca_1
+pca_2
+pca_3
+
+# TSNE
+tsne_1 <- DimPlot(object = Data_combined, reduction = "tsne", group.by = "Condition")
+tsne_2 <- DimPlot(object = Data_combined, reduction = "tsne", label = TRUE)
+tsne_3 <- DimPlot(object = Data_combined, reduction = "tsne", split.by = "Condition")
+tsne_1
+tsne_2
+tsne_3
+
+# UMAP
+umap_1 <- DimPlot(object = Data_combined, reduction = "umap", group.by = "Condition")
+umap_2 <- DimPlot(object = Data_combined, reduction = "umap", label = TRUE)
+umap_3 <- DimPlot(object = Data_combined, reduction = "umap", split.by = "Condition", label = TRUE)
+umap_4 <- DimPlot(object = Data_combined, reduction = "umap", split.by = "Condition", label = FALSE)
+umap_1
+umap_2
+umap_3
+umap_4
+```
+
+```{r}
+
+#Question1/ Find Markers
+
+#https://hbctraining.github.io/scRNA-seq/lessons/sc_exercises_integ_marker_identification.html
+
+#Create Annotation File #Only need to run this once
+# Connect to AnnotationHub
+
+ah <- AnnotationHub()
+
+ah$species$Rat
+
+# Access the Ensembl database for organism
+ahDb <- query(ah, 
+              pattern = c("Rattus norvegicus", "EnsDb"), 
+              ignore.case = TRUE)
+
+# Acquire the latest annotation files
+id <- ahDb %>%
+        mcols() %>%
+        rownames() %>%
+        tail(n = 1)
+
+# Download the appropriate Ensembldb database
+edb <- ah[[id]]
+
+# Extract gene-level information from database
+annotations <- genes(edb, 
+                     return.type = "data.frame")
+
+# Select annotations of interest
+annotations <- annotations %>%
+        dplyr::select(gene_id, gene_name, seq_name, gene_biotype, description)
+
+write.csv(annotations,'annotations.csv')
+
+
+#Identification of conserved markers in all conditions
+# For performing differential expression after integration, we switch back to the original data
+DefaultAssay(Data_combined) <- "RNA"
+annotations <- read.csv(file = 'annotations.csv')
+
+# Create function to get conserved markers for any given cluster
+get_conserved <- function(cluster){
+  FindConservedMarkers(Data_combined,
+                       ident.1 = cluster,
+                       grouping.var = "Condition",
+                       only.pos = TRUE) %>%
+    rownames_to_column(var = "gene") %>%
+    left_join(y = unique(annotations[, c("gene_name", "description")]),
+               by = c("gene" = "gene_name")) %>%
+    cbind(cluster_id = cluster, .)
+}
+
+# Iterate function across desired clusters
+conserved_markers <- map_dfr(0:10, get_conserved)
+#write.table(conserved_markers, file = "conservedmarkers.tsv", sep = "\t", quote = FALSE)
+
+# Extract top 10 markers per cluster
+top10 <- conserved_markers %>% 
+  mutate(avg_fc = (DMSOexp1_avg_log2FC + DMSOexp4_avg_log2FC + Mirin_avg_log2FC + Ly_avg_log2FC) /4) %>% 
+  group_by(cluster_id) %>% 
+  top_n(n = 10, 
+        wt = avg_fc)
+
+class <- read.table("PanglaoDB_markers_27_Mar_2020.tsv.gz", sep = "\t", header = TRUE)
+class
+colnames(class)[2:3] <- c("gene", "cell_type")
+class <- dplyr::filter(class, species == "Mm Hs" | species == "Mm")
+class <- dplyr::select(class, gene, cell_type, sensitivity_mouse, specificity_mouse)
+class$gene <- as.character(class$gene)
+
+
+# Change markers to upper case for intersection
+top10$gene <- toupper(top10$gene)
+top10_class <- inner_join(top10, class, by = "gene")
+#write.table(top10_class, file = "top10_class.tsv", sep = "\t", quote = FALSE)
+
+
+# Find markers for each cluster
+# Only positive markers
+#This analysis compares each cluster against all others and outputs the genes that are differentially expressed/present using the FindAllMarkers() function.
+
+#Identification of all markers for each cluster
+# Find markers for every cluster compared to all remaining cells, report only the positive ones
+DefaultAssay(Data_combined) <- "RNA"
+combined_markers <- FindAllMarkers(object = Data_combined, 
+                          only.pos = TRUE,
+                          logfc.threshold = 0.25)  
+
+View(combined_markers)   
+
+# Combine markers with gene descriptions 
+ann_comb_markers <- inner_join(x = combined_markers, 
+                               y = annotations[, c("gene_name", "description")],
+                               by = c("gene" = "gene_name")) %>%
+        unique()
+
+# Rearrange the columns to be more intuitive
+ann_comb_markers <- ann_comb_markers[ , c(6, 7, 2:4, 1, 5,8)]
+
+# Order the rows by p-adjusted values
+ann_comb_markers <- ann_comb_markers %>%
+        dplyr::arrange(cluster, p_val_adj)
+
+View(ann_comb_markers)
+
+# Extract top 5 markers per cluster
+top5_comb <- ann_comb_markers %>%
+        group_by(cluster) %>%
+        top_n(n = 5,
+              wt = avg_log2FC)
+
+# Visualize top 5 markers per cluster
+View(top5_comb)
+#write.table(clust_markers_10, file = "top10_cluster_markerssubsetres02.tsv", sep = "\t", quote = FALSE)
+
+
+```
+
+
+```{r}
+#https://hbctraining.github.io/scRNA-seq/lessons/09_merged_SC_marker_identification.html
+# Rename clusters/Annotate Cell types
+Data_combined <- RenameIdents(object = Data_combined, 
+                               `0` = "NPY+ Neuron", 
+                               `1` = "NPY- Neuron", 
+                               `2` = "Stressed cells", 
+                               `3` = "NPY- Neuron", 
+                               `4` = "Satellite", 
+                               `5` = "Satellite", 
+                               `6` = "Stressed cells", 
+                               `7` = "Macrophages", 
+                               `8` = "NPY- Neuron",
+                               `9` = "Schwann",
+                               `10` = "Unknown")
+# Plots
+tsne_cell_1 <- DimPlot(object = Data_combined, reduction = "tsne", label = TRUE)
+tsne_cell_2 <- DimPlot(object = Data_combined, reduction = "tsne", split.by = "Condition")
+umap_cell_1 <- DimPlot(object = Data_combined, reduction = "umap", label = TRUE)
+umap_cell_2 <- DimPlot(object = Data_combined, reduction = "umap", split.by = "Condition")
+tsne_cell_1
+umap_cell_1
+tsne_cell_2
+umap_cell_2
+
+
+#Figure 2
+umap_4 / 
+umap_cell_2
+
+# Remove the unknown cells
+seurat_subset_labeled <- subset(Data_combined,
+                               idents = "Unknown", invert = TRUE)
+
+
+# Plots
+tsne_cell_1 <- DimPlot(object = seurat_subset_labeled, reduction = "tsne", label = TRUE)
+tsne_cell_2 <- DimPlot(object = seurat_subset_labeled, reduction = "tsne", split.by = "Condition")
+umap_cell_1 <- DimPlot(object = seurat_subset_labeled, reduction = "umap", label = TRUE)
+umap_cell_2 <- DimPlot(object = seurat_subset_labeled, reduction = "umap", split.by = "Condition")
+tsne_cell_1
+umap_cell_1
+tsne_cell_2
+umap_cell_2
+# Re-visualize the clusters
+DimPlot(object = seurat_subset_labeled, 
+        reduction = "umap", 
+        label = TRUE,
+        label.size = 3,
+	repel = TRUE)
+
+
+```
+
+```{r}
+# Question 2
+#https://satijalab.org/seurat/articles/de_vignette.html
+
+Data_combined$celltype.condition <- paste(Idents(Data_combined), Data_combined$Condition, sep = "_")
+Data_combined$celltype <- Idents(Data_combined)
+Idents(Data_combined) <- "celltype.condition"
+
+
+# Identify differential expression across conditions
+###NPY+ Neuron
+
+neuronposDMSO1_4.response <- FindMarkers(Data_combined, ident.1 = "NPY+ Neuron_DMSOexp1", ident.2 = "NPY+ Neuron_DMSOexp4", test.use = "wilcox", verbose = FALSE)
+head(neuronposDMSO1_4.response, n = 15)
+
+neuronposDMSO1_Mirin.response <- FindMarkers(Data_combined, ident.1 = "NPY+ Neuron_DMSOexp1", ident.2 = "NPY+ Neuron_Mirin", test.use = "wilcox", verbose = FALSE)
+head(neuronposDMSO1_Mirin.response, n = 15)
+
+neuronposDMSO1_Ly.response <- FindMarkers(Data_combined, ident.1 = "NPY+ Neuron_DMSOexp1", ident.2 = "NPY+ Neuron_Ly", test.use = "wilcox", verbose = FALSE)
+head(neuronposDMSO1_Ly.response, n = 15)
+
+neuronposDMSO4_Mirin.response <- FindMarkers(Data_combined, ident.1 = "NPY+ Neuron_DMSOexp4", ident.2 = "NPY+ Neuron_Mirin", test.use = "wilcox", verbose = FALSE)
+head(neuronposDMSO4_Mirin.response, n = 15)
+
+neuronposDMSO4_Ly.response <- FindMarkers(Data_combined, ident.1 = "NPY+ Neuron_DMSOexp4", ident.2 = "NPY+ Neuron_Ly", test.use = "wilcox", verbose = FALSE)
+head(neuronposDMSO4_Ly.response, n = 15)
+
+neuronposMirin_Ly.response <- FindMarkers(Data_combined, ident.1 = "NPY+ Neuron_Mirin", ident.2 = "NPY+ Neuron_Ly", test.use = "wilcox", verbose = FALSE)
+head(neuronposMirin_Ly.response, n = 15)
+
+###NPY- Neuron
+
+neuronnegDMSO1_4.response <- FindMarkers(Data_combined, ident.1 = "NPY- Neuron_DMSOexp1", ident.2 = "NPY- Neuron_DMSOexp4", test.use = "wilcox", verbose = FALSE)
+head(neuronnegDMSO1_4.response, n = 15)
+
+neuronnegDMSO1_Mirin.response <- FindMarkers(Data_combined, ident.1 = "NPY- Neuron_DMSOexp1", ident.2 = "NPY- Neuron_Mirin", test.use = "wilcox", verbose = FALSE)
+head(neuronnegDMSO1_Mirin.response, n = 15)
+
+neuronnegDMSO1_Ly.response <- FindMarkers(Data_combined, ident.1 = "NPY- Neuron_DMSOexp1", ident.2 = "NPY- Neuron_Ly", test.use = "wilcox", verbose = FALSE)
+head(neuronnegDMSO1_Ly.response, n = 15)
+
+neuronnegDMSO4_Mirin.response <- FindMarkers(Data_combined, ident.1 = "NPY- Neuron_DMSOexp4", ident.2 = "NPY- Neuron_Mirin", test.use = "wilcox", verbose = FALSE)
+head(neuronnegDMSO4_Mirin.response, n = 15)
+
+neuronnegDMSO4_Ly.response <- FindMarkers(Data_combined, ident.1 = "NPY- Neuron_DMSOexp4", ident.2 = "NPY- Neuron_Ly", test.use = "wilcox", verbose = FALSE)
+head(neuronnegDMSO4_Ly.response, n = 15)
+
+neuronnegMirin_Ly.response <- FindMarkers(Data_combined, ident.1 = "NPY- Neuron_Mirin", ident.2 = "NPY- Neuron_Ly", test.use = "wilcox", verbose = FALSE)
+head(neuronnegMirin_Ly.response, n = 15)
+
+###Macrophage
+
+
+MacrophageDMSO1_4.response <- FindMarkers(Data_combined, ident.1 = "Macrophages_DMSOexp1", ident.2 = "Macrophages_DMSOexp4", test.use = "wilcox", verbose = FALSE)
+head(MacrophageDMSO1_4.response, n = 15)
+
+MacrophageDMSO1_Mirin.response <- FindMarkers(Data_combined, ident.1 = "Macrophages_DMSOexp1", ident.2 = "Macrophages_Mirin", test.use = "wilcox", verbose = FALSE)
+head(MacrophageDMSO1_Mirin.response, n = 15)
+
+MacrophageDMSO1_Ly.response <- FindMarkers(Data_combined, ident.1 = "Macrophages_DMSOexp1", ident.2 = "Macrophages_Ly", test.use = "wilcox", verbose = FALSE)
+head(MacrophageDMSO1_Ly.response, n = 15)
+
+MacrophageDMSO4_Mirin.response <- FindMarkers(Data_combined, ident.1 = "Macrophages_DMSOexp4", ident.2 = "Macrophages_Mirin", test.use = "wilcox", verbose = FALSE)
+head(MacrophageDMSO4_Mirin.response, n = 15)
+
+MacrophageDMSO4_Ly.response <- FindMarkers(Data_combined, ident.1 = "Macrophages_DMSOexp4", ident.2 = "Macrophages_Ly", test.use = "wilcox", verbose = FALSE)
+head(MacrophageDMSO4_Ly.response, n = 15)
+
+MacrophageMirin_Ly.response <- FindMarkers(Data_combined, ident.1 = "Macrophages_Mirin", ident.2 = "Macrophages_Ly", test.use = "wilcox", verbose = FALSE)
+head(MacrophageMirin_Ly.response, n = 15)
+
+
+###Schwann
+
+
+SchwannDMSO1_4.response <- FindMarkers(Data_combined, ident.1 = "Schwann_DMSOexp1", ident.2 = "Schwann_DMSOexp4", test.use = "wilcox", verbose = FALSE)
+head(SchwannDMSO1_4.response, n = 15)
+
+SchwannDMSO1_Mirin.response <- FindMarkers(Data_combined, ident.1 = "Schwann_DMSOexp1", ident.2 = "Schwann_Mirin", test.use = "wilcox", verbose = FALSE)
+head(SchwannDMSO1_Mirin.response, n = 15)
+
+SchwannDMSO1_Ly.response <- FindMarkers(Data_combined, ident.1 = "Schwann_DMSOexp1", ident.2 = "Schwann_Ly", test.use = "wilcox", verbose = FALSE)
+head(SchwannDMSO1_Ly.response, n = 15)
+
+SchwannDMSO4_Mirin.response <- FindMarkers(Data_combined, ident.1 = "Schwann_DMSOexp4", ident.2 = "Schwann_Mirin", test.use = "wilcox", verbose = FALSE)
+head(SchwannDMSO4_Mirin.response, n = 15)
+
+SchwannDMSO4_Ly.response <- FindMarkers(Data_combined, ident.1 = "Schwann_DMSOexp4", ident.2 = "Schwann_Ly", test.use = "wilcox", verbose = FALSE)
+head(SchwannDMSO4_Ly.response, n = 15)
+
+SchwannMirin_Ly.response <- FindMarkers(Data_combined, ident.1 = "Schwann_Mirin", ident.2 = "Schwann_Ly", test.use = "wilcox", verbose = FALSE)
+head(SchwannMirin_Ly.response, n = 15)
+
+###Satellite
+
+
+SatelliteDMSO1_4.response <- FindMarkers(Data_combined, ident.1 = "Satellite_DMSOexp1", ident.2 = "Satellite_DMSOexp4", test.use = "wilcox", verbose = FALSE)
+head(SatelliteDMSO1_4.response, n = 15)
+
+SatelliteDMSO1_Mirin.response <- FindMarkers(Data_combined, ident.1 = "Satellite_DMSOexp1", ident.2 = "Satellite_Mirin", test.use = "wilcox", verbose = FALSE)
+head(SatelliteDMSO1_Mirin.response, n = 15)
+
+
+SatelliteDMSO1_Ly.response <- FindMarkers(Data_combined, ident.1 = "Satellite_DMSOexp1", ident.2 = "Satellite_Ly", test.use = "wilcox", verbose = FALSE)
+head(SatelliteDMSO1_Ly.response, n = 15)
+
+SatelliteDMSO4_Mirin.response <- FindMarkers(Data_combined, ident.1 = "Satellite_DMSOexp4", ident.2 = "Satellite_Mirin", test.use = "wilcox", verbose = FALSE)
+head(SatelliteDMSO4_Mirin.response, n = 15)
+
+
+SatelliteDMSO4_Ly.response <- FindMarkers(Data_combined, ident.1 = "Satellite_DMSOexp4", ident.2 = "Satellite_Ly", test.use = "wilcox", verbose = FALSE)
+head(SatelliteDMSO4_Ly.response, n = 15)
+
+SatelliteMirin_Ly.response <- FindMarkers(Data_combined, ident.1 = "Satellite_Mirin", ident.2 = "Satellite_Ly", test.use = "wilcox", verbose = FALSE)
+head(SatelliteMirin_Ly.response, n = 15)
+
+
+
+
+###Stressed
+
+
+StressedDMSO1_4.response <- FindMarkers(Data_combined, ident.1 = "Stressed cells_DMSOexp1", ident.2 = "Stressed cells_DMSOexp4", test.use = "wilcox", verbose = FALSE)
+head(StressedDMSO1_4.response, n = 15)
+
+StressedDMSO1_Mirin.response <- FindMarkers(Data_combined, ident.1 = "Stressed cells_DMSOexp1", ident.2 = "Stressed cells_Mirin", test.use = "wilcox", verbose = FALSE)
+head(StressedDMSO1_Mirin.response, n = 15)
+
+StressedDMSO1_Ly.response <- FindMarkers(Data_combined, ident.1 = "Stressed cells_DMSOexp1", ident.2 = "Stressed cells_Ly", test.use = "wilcox", verbose = FALSE)
+head(StressedDMSO1_Ly.response, n = 15)
+
+
+StressedDMSO4_Mirin.response <- FindMarkers(Data_combined, ident.1 = "Stressed cells_DMSOexp4", ident.2 = "Stressed cells_Mirin", test.use = "wilcox", verbose = FALSE)
+head(StressedDMSO4_Mirin.response, n = 15)
+
+StressedDMSO4_Ly.response <- FindMarkers(Data_combined, ident.1 = "Stressed cells_DMSOexp4", ident.2 = "Stressed cells_Ly", test.use = "wilcox", verbose = FALSE)
+head(StressedDMSO4_Ly.response, n = 15)
+
+
+StressedMirin_Ly.response <- FindMarkers(Data_combined, ident.1 = "Stressed cells_Mirin", ident.2 = "Stressed cells_Ly", test.use = "wilcox", verbose = FALSE)
+head(StressedMirin_Ly.response, n = 15)
+
+
+
+```
+
+```{r}
+# Create master differential expression dataframe for each stage comparison 
+# Create unfiltered dataframes:
+# DMSO1vsDMSO4
+neuronposDMSO1_4.response$cell <- "NPY+ Neuron"
+neuronnegDMSO1_4.response$cell <- "NPY- Neuron"
+MacrophageDMSO1_4.response$cell <- "Macrophages"
+SchwannDMSO1_4.response$cell <- "Schwann"
+SatelliteDMSO1_4.response$cell <- "Satellite"
+StressedDMSO1_4.response$cell <- "Stressed cells"
+DMSO1_4 <- do.call("rbind", list(neuronposDMSO1_4.response,
+                                neuronnegDMSO1_4.response,
+                                MacrophageDMSO1_4.response,
+                                SchwannDMSO1_4.response,
+                                SatelliteDMSO1_4.response,
+                                StressedDMSO1_4.response))
+DMSO1_4 #5960
+
+# DMSO1vsMirin
+neuronposDMSO1_Mirin.response$cell <- "NPY+ Neuron"
+neuronnegDMSO1_Mirin.response$cell <- "NPY- Neuron"
+MacrophageDMSO1_Mirin.response$cell <- "Macrophages"
+SchwannDMSO1_Mirin.response$cell <- "Schwann"
+SatelliteDMSO1_Mirin.response$cell <- "Satellite"
+StressedDMSO1_Mirin.response$cell <- "Stressed cells"
+DMSO1_Mirin <- do.call("rbind", list(neuronposDMSO1_Mirin.response,
+                                neuronnegDMSO1_Mirin.response,
+                                MacrophageDMSO1_Mirin.response,
+                                SchwannDMSO1_Mirin.response,
+                                SatelliteDMSO1_Mirin.response,
+                                StressedDMSO1_Mirin.response))
+DMSO1_Mirin #12600
+
+
+# DMSO1vsLy
+neuronposDMSO1_Ly.response$cell <- "NPY+ Neuron"
+neuronnegDMSO1_Ly.response$cell <- "NPY- Neuron"
+MacrophageDMSO1_Ly.response$cell <- "Macrophages"
+SchwannDMSO1_Ly.response$cell <- "Schwann"
+SatelliteDMSO1_Ly.response$cell <- "Satellite"
+StressedDMSO1_Ly.response$cell <- "Stressed cells"
+DMSO1_Ly <- do.call("rbind", list(neuronposDMSO1_Ly.response,
+                                neuronnegDMSO1_Ly.response,
+                                MacrophageDMSO1_Ly.response,
+                                SchwannDMSO1_Ly.response,
+                                SatelliteDMSO1_Ly.response,
+                                StressedDMSO1_Ly.response))
+DMSO1_Ly #7803
+
+# DMSO4vsMirin
+neuronposDMSO4_Mirin.response$cell <- "NPY+ Neuron"
+neuronnegDMSO4_Mirin.response$cell <- "NPY- Neuron"
+MacrophageDMSO4_Mirin.response$cell <- "Macrophages"
+SchwannDMSO4_Mirin.response$cell <- "Schwann"
+SatelliteDMSO4_Mirin.response$cell <- "Satellite"
+StressedDMSO4_Mirin.response$cell <- "Stressed cells"
+DMSO4_Mirin <- do.call("rbind", list(neuronposDMSO4_Mirin.response,
+                                neuronnegDMSO4_Mirin.response,
+                                MacrophageDMSO4_Mirin.response,
+                                SchwannDMSO4_Mirin.response,
+                                SatelliteDMSO4_Mirin.response,
+                                StressedDMSO4_Mirin.response$cell))
+
+row.names.remove <- c("11734")
+DMSO4_Mirin <- DMSO4_Mirin[!(row.names(DMSO4_Mirin) %in% row.names.remove), ]
+DMSO4_Mirin[-6] <- lapply(DMSO4_Mirin[-6], as.numeric)
+DMSO4_Mirin #11734
+
+# DMSO4vsLy
+neuronposDMSO4_Ly.response$cell <- "NPY+ Neuron"
+neuronnegDMSO4_Ly.response$cell <- "NPY- Neuron"
+MacrophageDMSO4_Ly.response$cell <- "Macrophages"
+SchwannDMSO4_Ly.response$cell <- "Schwann"
+SatelliteDMSO4_Ly.response$cell <- "Satellite"
+StressedDMSO4_Ly.response$cell <- "Stressed cells"
+DMSO4_Ly <- do.call("rbind", list(neuronposDMSO4_Ly.response,
+                                neuronnegDMSO4_Ly.response,
+                                MacrophageDMSO4_Ly.response,
+                                SchwannDMSO4_Ly.response,
+                                SatelliteDMSO4_Ly.response,
+                                StressedDMSO4_Ly.response))
+DMSO4_Ly #5100
+
+# MirinvsLy
+neuronposMirin_Ly.response$cell <- "NPY+ Neuron"
+neuronnegMirin_Ly.response$cell <- "NPY- Neuron"
+MacrophageMirin_Ly.response$cell <- "Macrophage"
+SchwannMirin_Ly.response$cell <- "Schwann"
+SatelliteMirin_Ly.response$cell <- "Satellite"
+StressedMirin_Ly.response$cell <- "Stressed cells"
+Mirin_Ly <- do.call("rbind", list(neuronposMirin_Ly.response,
+                                neuronnegMirin_Ly.response,
+                                MacrophageMirin_Ly.response,
+                                SchwannMirin_Ly.response,
+                                SatelliteMirin_Ly.response,
+                                StressedMirin_Ly.response))
+Mirin_Ly #13143
+
+DMSO1_4 #199
+DMSO1_Mirin #964
+DMSO1_Ly #253
+DMSO4_Mirin #838
+DMSO4_Ly #37
+Mirin_Ly #766
+
+
+```
+
+```{r}
+#Volcano plots
+
+#DMSO1vsDMSO4
+DMSO1_4 <- cbind(gene = rownames(DMSO1_4), DMSO1_4)
+# pick a set of genes to label:
+DMSO1_4$label<-"No"
+DMSO1_4$label[which(DMSO1_4$p_val_adj<= 0.01 & abs(DMSO1_4$avg_log2FC)>= 1)]<-"Yes"
+DMSO1_4 <- DMSO1_4 %>%
+  mutate(threshold = ifelse((avg_log2FC >= 0 & p_val_adj < 0.01), "up_sig",
+                            ifelse((avg_log2FC <= 0 & p_val_adj < 0.01) , 
+                                   "down_sig", "not_sig")))
+DMSO1_4$threshold[is.na(DMSO1_4$threshold)] <- "not_sig"
+DMSO1_4plot <- ggplot(DMSO1_4, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+  geom_point(aes(colour = threshold), size=1) +
+  ggtitle("DMSO1 vs. DMSO4") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,100) + xlim(-2,2) +
+  scale_colour_manual(values=c("blue", "grey", "red3"), 
+                       name="Threshold 0.01",
+                       breaks=c("down_sig", "not_sig", "up_sig"),
+                       labels=c("Down", "None", "Up")) +
+  theme_bw() + 
+  theme(panel.background = element_blank())+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), axis.line=element_line()) +
+  geom_vline(xintercept=-1,linetype="dotted")+
+  geom_vline(xintercept=1,linetype="dotted")+
+  geom_text_repel(
+    data = subset(DMSO1_4, label=="Yes"),
+    aes(label = DMSO1_4$gene[which(label=="Yes")]),
+    size = 5,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.5, "lines")
+  )
+
+DMSO1_4plot
+  
+#DMSO1vsMirin
+
+DMSO1_Mirin <- cbind(gene = rownames(DMSO1_Mirin), DMSO1_Mirin)
+# pick a set of genes to label:
+DMSO1_Mirin$label<-"No"
+DMSO1_Mirin$label[which(DMSO1_Mirin$p_val_adj<= 0.01 & abs(DMSO1_Mirin$avg_log2FC)>= 1)]<-"Yes"
+DMSO1_Mirin <- DMSO1_Mirin %>%
+  mutate(threshold = ifelse((avg_log2FC >= 0 & p_val_adj < 0.01), "up_sig",
+                            ifelse((avg_log2FC <= 0 & p_val_adj < 0.01) , 
+                                   "down_sig", "not_sig")))
+DMSO1_Mirin$threshold[is.na(DMSO1_Mirin$threshold)] <- "not_sig"
+DMSO1_Mirinplot <- ggplot(DMSO1_Mirin, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+  geom_point(aes(colour = threshold), size=1) +
+  ggtitle("DMSO1 vs. Mirin") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,100) + xlim(-2,2) +
+  scale_colour_manual(values=c("blue", "grey", "red3"), 
+                       name="Threshold 0.01",
+                       breaks=c("down_sig", "not_sig", "up_sig"),
+                       labels=c("Down", "None", "Up")) +
+  theme_bw() + 
+  theme(panel.background = element_blank())+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), axis.line=element_line()) +
+  geom_vline(xintercept=-1,linetype="dotted")+
+  geom_vline(xintercept=1,linetype="dotted")+
+  geom_text_repel(
+    data = subset(DMSO1_Mirin, label=="Yes"),
+    aes(label = DMSO1_Mirin$gene[which(label=="Yes")]),
+    size = 5,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.5, "lines")
+  )
+
+DMSO1_Mirinplot
+
+#DMSO1vsLY
+
+DMSO1_Ly <- cbind(gene = rownames(DMSO1_Ly), DMSO1_Ly)
+# pick a set of genes to label:
+DMSO1_Ly$label<-"No"
+DMSO1_Ly$label[which(DMSO1_Ly$p_val_adj<= 0.01 & abs(DMSO1_Ly$avg_log2FC)>= 1)]<-"Yes"
+DMSO1_Ly <- DMSO1_Ly %>%
+  mutate(threshold = ifelse((avg_log2FC >= 0 & p_val_adj < 0.01), "up_sig",
+                            ifelse((avg_log2FC <= 0 & p_val_adj < 0.01) , 
+                                   "down_sig", "not_sig")))
+DMSO1_Ly$threshold[is.na(DMSO1_Ly$threshold)] <- "not_sig"
+DMSO1_Lyplot <- ggplot(DMSO1_Ly, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+  geom_point(aes(colour = threshold), size=1) +
+  ggtitle("DMSO1 vs. LY") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,100) + xlim(-2,2) +
+  scale_colour_manual(values=c("blue", "grey", "red3"), 
+                       name="Threshold 0.01",
+                       breaks=c("down_sig", "not_sig", "up_sig"),
+                       labels=c("Down", "None", "Up")) +
+  theme_bw() + 
+  theme(panel.background = element_blank())+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), axis.line=element_line()) +
+  geom_vline(xintercept=-1,linetype="dotted")+
+  geom_vline(xintercept=1,linetype="dotted")+
+  geom_text_repel(
+    data = subset(DMSO1_Ly, label=="Yes"),
+    aes(label = DMSO1_Ly$gene[which(label=="Yes")]),
+    size = 5,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.5, "lines")
+  )
+
+DMSO1_Lyplot
+
+#DMSO4vsMirin
+
+str(DMSO4_Mirin)
+
+DMSO4_Mirin <- cbind(gene = rownames(DMSO4_Mirin), DMSO4_Mirin)
+# pick a set of genes to label:
+DMSO4_Mirin$label<-"No"
+DMSO4_Mirin$label[which(DMSO4_Mirin$p_val_adj<= 0.01 & abs(DMSO4_Mirin$avg_log2FC)>= 1)]<-"Yes"
+DMSO4_Mirin <- DMSO4_Mirin %>%
+  mutate(threshold = ifelse((avg_log2FC >= 0 & p_val_adj < 0.01), "up_sig",
+                            ifelse((avg_log2FC <= 0 & p_val_adj < 0.01) , 
+                                   "down_sig", "not_sig")))
+DMSO4_Mirin$threshold[is.na(DMSO4_Mirin$threshold)] <- "not_sig"
+DMSO4_Mirinplot <- ggplot(DMSO4_Mirin, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+  geom_point(aes(colour = threshold), size=1) +
+  ggtitle("DMSO4 vs. Mirin") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,100) + xlim(-2,2) +
+  scale_colour_manual(values=c("blue", "grey", "red3"), 
+                       name="Threshold 0.01",
+                       breaks=c("down_sig", "not_sig", "up_sig"),
+                       labels=c("Down", "None", "Up")) +
+  theme_bw() + 
+  theme(panel.background = element_blank())+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), axis.line=element_line()) +
+  geom_vline(xintercept=-1,linetype="dotted")+
+  geom_vline(xintercept=1,linetype="dotted")+
+  geom_text_repel(
+    data = subset(DMSO4_Mirin, label=="Yes"),
+    aes(label = DMSO4_Mirin$gene[which(label=="Yes")]),
+    size = 5,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.5, "lines")
+  )
+
+DMSO4_Mirinplot
+
+
+
+#DMSO4vsLy
+
+DMSO4_Ly <- cbind(gene = rownames(DMSO4_Ly), DMSO4_Ly)
+# pick a set of genes to label:
+DMSO4_Ly$label<-"No"
+DMSO4_Ly$label[which(DMSO4_Ly$p_val_adj<= 0.01 & abs(DMSO4_Ly$avg_log2FC)>= 1)]<-"Yes"
+DMSO4_Ly <- DMSO4_Ly %>%
+  mutate(threshold = ifelse((avg_log2FC >= 0 & p_val_adj < 0.01), "up_sig",
+                            ifelse((avg_log2FC <= 0 & p_val_adj < 0.01) , 
+                                   "down_sig", "not_sig")))
+DMSO4_Ly$threshold[is.na(DMSO4_Ly$threshold)] <- "not_sig"
+DMSO4_Lyplot <- ggplot(DMSO4_Ly, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+  geom_point(aes(colour = threshold), size=1) +
+  ggtitle("DMSO4 vs. Ly") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,100) + xlim(-2,2) +
+  scale_colour_manual(values=c("blue", "grey", "red3"), 
+                       name="Threshold 0.01",
+                       breaks=c("down_sig", "not_sig", "up_sig"),
+                       labels=c("Down", "None", "Up")) +
+  theme_bw() + 
+  theme(panel.background = element_blank())+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), axis.line=element_line()) +
+  geom_vline(xintercept=-1,linetype="dotted")+
+  geom_vline(xintercept=1,linetype="dotted")+
+  geom_text_repel(
+    data = subset(DMSO4_Ly, label=="Yes"),
+    aes(label = DMSO4_Ly$gene[which(label=="Yes")]),
+    size = 5,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.5, "lines")
+  )
+
+DMSO4_Lyplot
+
+#MirinvsLy
+
+Mirin_Ly <- cbind(gene = rownames(Mirin_Ly), Mirin_Ly)
+# pick a set of genes to label:
+Mirin_Ly$label<-"No"
+Mirin_Ly$label[which(Mirin_Ly$p_val_adj<= 0.01 & abs(Mirin_Ly$avg_log2FC)>= 1)]<-"Yes"
+Mirin_Ly <- Mirin_Ly %>%
+  mutate(threshold = ifelse((avg_log2FC >= 0 & p_val_adj < 0.01), "up_sig",
+                            ifelse((avg_log2FC <= 0 & p_val_adj < 0.01) , 
+                                   "down_sig", "not_sig")))
+Mirin_Ly$threshold[is.na(Mirin_Ly$threshold)] <- "not_sig"
+Mirin_Lyplot <- ggplot(Mirin_Ly, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+  geom_point(aes(colour = threshold), size=1) +
+  ggtitle("Mirin vs. Ly") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0,100) + xlim(-2,2) +
+  scale_colour_manual(values=c("blue", "grey", "red3"), 
+                       name="Threshold 0.01",
+                       breaks=c("down_sig", "not_sig", "up_sig"),
+                       labels=c("Down", "None", "Up")) +
+  theme_bw() + 
+  theme(panel.background = element_blank())+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1))+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), axis.line=element_line()) +
+  geom_vline(xintercept=-1,linetype="dotted")+
+  geom_vline(xintercept=1,linetype="dotted")+
+  geom_text_repel(
+    data = subset(Mirin_Ly, label=="Yes"),
+    aes(label = Mirin_Ly$gene[which(label=="Yes")]),
+    size = 5,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.5, "lines")
+  )
+
+Mirin_Lyplot
+
+
+
+
+(DMSO1_4plot + DMSO1_Mirinplot + DMSO1_Lyplot)/
+(DMSO4_Mirinplot + DMSO4_Lyplot + Mirin_Lyplot) #2000x1000
+
+
+```
+
+
+```{r}
+#Filter Datasets/ Number of Significantly Regurlated genes
+
+DMSO1_4filtered <- filter(DMSO1_4, p_val_adj <= 0.01, abs(avg_log2FC) >= 1) #184
+DMSO1_Mirinfiltered <- filter(DMSO1_Mirin, p_val_adj <= 0.01, abs(avg_log2FC) >= 1) #969
+DMSO1_Lyfiltered <- filter(DMSO1_Ly, p_val_adj <= 0.01, abs(avg_log2FC) >= 1) #252
+DMSO4_Mirinfiltered <- filter(DMSO4_Mirin, p_val_adj <= 0.01, abs(avg_log2FC) >= 1) #842
+DMSO4_Lyfiltered <- filter(DMSO4_Ly, p_val_adj <= 0.01, abs(avg_log2FC) >= 1) #42
+Mirin_Lyfiltered <- filter(Mirin_Ly, p_val_adj <= 0.01, abs(avg_log2FC) >= 1) #787
+
+
+#Pathway Analysis
+
+#https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/seurat/seurat_05_dge.html
+
+# Check available databases to perform enrichment (then choose one)
+enrichR::listEnrichrDbs()
+# Perform enrichment
+
+DMSO1_4enrich_results <- enrichr(genes = DMSO1_4filtered$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO1_4enrich_results$P.value)[10:1], names.arg = DMSO1_4enrich_results$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO1_Mirinenrich_results <- enrichr(genes = DMSO1_Mirinfiltered$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO1_Mirinenrich_results$P.value)[10:1], names.arg = DMSO1_Mirinenrich_results$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO1_Lyenrich_results <- enrichr(genes = DMSO1_Lyfiltered$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO1_Lyenrich_results$P.value)[10:1], names.arg = DMSO1_Lyenrich_results$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO4_Mirinenrich_results <- enrichr(genes = DMSO4_Mirinfiltered$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO4_Mirinenrich_results$P.value)[10:1], names.arg = DMSO4_Mirinenrich_results$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO4_Lyenrich_results <- enrichr(genes = DMSO4_Lyfiltered$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO4_Lyenrich_results$P.value)[10:1], names.arg = DMSO4_Lyenrich_results$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+Mirin_Lyenrich_results <- enrichr(genes = Mirin_Lyfiltered$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(Mirin_Lyenrich_results$P.value)[10:1], names.arg = Mirin_Lyenrich_results$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+
+```
+
+```{r}
+#Filter Datasets #Number of Significantly upregulated and downrefulated genes
+
+DMSO1_4up <- filter(DMSO1_4filtered, threshold == "up_sig") #87
+DMSO1_4down <- filter(DMSO1_4filtered, threshold == "down_sig") #97
+DMSO1_Mirinup <- filter(DMSO1_Mirinfiltered, threshold == "up_sig") #665
+DMSO1_Mirindown <- filter(DMSO1_Mirinfiltered, threshold == "down_sig") # 304
+DMSO1_Lyup <- filter(DMSO1_Lyfiltered, threshold == "up_sig") #136
+DMSO1_Lydown <- filter(DMSO1_Lyfiltered, threshold == "down_sig") #116
+DMSO4_Mirinup <- filter(DMSO4_Mirinfiltered, threshold == "up_sig") #622
+DMSO4_Mirindown <- filter(DMSO4_Mirinfiltered, threshold == "down_sig") # 220
+DMSO4_Lyup <- filter(DMSO4_Lyfiltered, threshold == "up_sig") #26
+DMSO4_Lydown <- filter(DMSO4_Lyfiltered, threshold == "down_sig") # 16
+Mirin_Lyup <- filter(Mirin_Lyfiltered, threshold == "up_sig") #218
+Mirin_Lydown <- filter(Mirin_Lyfiltered, threshold == "down_sig") # 569
+
+top10DMSO1_4up <- DMSO1_4up %>% 
+  mutate(avg_fc = (DMSOexp1_avg_log2FC + DMSOexp4_avg_log2FC + Mirin_avg_log2FC + Ly_avg_log2FC) /4) %>% 
+  group_by(cluster_id) %>% 
+  top_n(n = 10, 
+        wt = avg_fc)
+
+# Extract top 10 upregulated and downregulated genes
+top10DMSO1_4up <- DMSO1_4up  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10DMSO1_4down <- DMSO1_4down  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10DMSO1_Mirinup <- DMSO1_Mirinup  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10DMSO1_Mirindown <- DMSO1_Mirindown  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10DMSO1_Lyup <- DMSO1_Lyup  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10DMSO1_Lydown <- DMSO1_Lydown  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10DMSO4_Mirinup <- DMSO4_Mirinup  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10DMSO4_Mirindown <- DMSO4_Mirindown  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10DMSO4_Lyup <- DMSO4_Lyup  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10DMSO4_Lydown <- DMSO4_Lydown  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10Mirin_Lyup <- Mirin_Lyup  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+top10Mirin_Lydown <- Mirin_Lydown  %>%
+        top_n(n = 10,
+              wt = avg_log2FC)
+
+
+Top10diffreggenes <- do.call("cbind", list(top10DMSO1_4up,
+                                top10DMSO1_4down,
+                                top10DMSO1_Mirinup,
+                                top10DMSO1_Mirindown,
+                                top10DMSO1_Lyup,
+                                top10DMSO1_Lydown,
+                                top10DMSO4_Mirinup,
+                                top10DMSO4_Mirindown,
+                                top10DMSO4_Lyup,
+                                top10DMSO4_Lydown,
+                                top10Mirin_Lyup,
+                                top10Mirin_Lydown))
+
+
+
+#write.table(Top10diffreggenes, file = "Top10diffreggenes.tsv", sep = "\t", quote = FALSE)
+
+#Pathway Analysis #Performed in upregulated and downregulated genes separately
+
+# Load additional packages
+
+# Check available databases to perform enrichment (then choose one)
+enrichR::listEnrichrDbs()
+# Perform enrichment
+
+DMSO1_4enrich_resultsup <- enrichr(genes = DMSO1_4up$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO1_4enrich_resultsup$P.value)[10:1], names.arg = DMSO1_4enrich_resultsup$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO1_4enrich_resultsdown <- enrichr(genes = DMSO1_4down$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO1_4enrich_resultsdown$P.value)[10:1], names.arg = DMSO1_4enrich_resultsdown$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO1_Mirinenrich_resultsup <- enrichr(genes = DMSO1_Mirinup$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO1_Mirinenrich_resultsup$P.value)[10:1], names.arg = DMSO1_Mirinenrich_resultsup$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO1_Mirinenrich_resultsdown <- enrichr(genes = DMSO1_Mirindown$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO1_Mirinenrich_resultsdown$P.value)[10:1], names.arg = DMSO1_Mirinenrich_resultsdown$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO1_Lyenrich_resultsup <- enrichr(genes = DMSO1_Lyup$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO1_Lyenrich_resultsup$P.value)[10:1], names.arg = DMSO1_Lyenrich_resultsup$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO1_Lyenrich_resultsdown <- enrichr(genes = DMSO1_Lydown$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO1_Lyenrich_resultsdown$P.value)[10:1], names.arg = DMSO1_Lyenrich_resultsdown$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO4_Mirinenrich_resultsup <- enrichr(genes = DMSO4_Mirinup$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO4_Mirinenrich_resultsup$P.value)[10:1], names.arg = DMSO4_Mirinenrich_resultsup$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO4_Mirinenrich_resultsdown <- enrichr(genes = DMSO4_Mirindown$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO4_Mirinenrich_resultsdown$P.value)[10:1], names.arg = DMSO4_Mirinenrich_resultsdown$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO4_Lyenrich_resultsup <- enrichr(genes = DMSO4_Lyup$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO4_Lyenrich_resultsup$P.value)[10:1], names.arg = DMSO4_Lyenrich_resultsup$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+DMSO4_Lyenrich_resultsdown <- enrichr(genes = DMSO4_Lydown$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(DMSO4_Lyenrich_resultsdown$P.value)[10:1], names.arg = DMSO4_Lyenrich_resultsdown$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+Mirin_Lyenrich_resultsup <- enrichr(genes = Mirin_Lyup$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(Mirin_Lyenrich_resultsup$P.value)[10:1], names.arg = Mirin_Lyenrich_resultsup$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+Mirin_Lyenrich_resultsdown <- enrichr(genes = Mirin_Lydown$gene, databases = "GO_Biological_Process_2018")[[1]]
+par(mfrow = c(1, 1), mar = c(3, 25, 2, 1))
+barplot(height = -log10(Mirin_Lyenrich_resultsdown$P.value)[10:1], names.arg = Mirin_Lyenrich_resultsdown$Term[10:1], 
+    horiz = TRUE, las = 1, border = FALSE, cex.names = 0.6)
+abline(v = c(-log10(0.05)), lty = 2)
+abline(v = 0, lty = 1)
+
+```
+
+
+```{r}
+
+#Question 4
+#https://satijalab.org/seurat/archive/v3.0/interaction_vignette.html
+
+# How many cells are in each cluster
+table(Idents(Data_combined))
+# How many cells are in each condition?
+table(Data_combined$Condition) 
+
+#DMSOexp1 DMSOexp4       Ly    Mirin 
+#    3833     4412     1986     2912 
+
+# What proportion of cells are in each cluster?
+prop.table(table(Idents(Data_combined)))
+
+# How does cluster membership vary by condition?
+table(Idents(Data_combined), Data_combined$Condition)
+
+proportions <- prop.table(table(Idents(Data_combined), Data_combined$Condition), margin = 2)
+
+#write.table(proportions, file = "proportions2.tsv", sep = "\t", quote = FALSE)
+
+
+
+```
+
